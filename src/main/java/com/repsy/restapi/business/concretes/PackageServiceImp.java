@@ -1,12 +1,9 @@
 package com.repsy.restapi.business.concretes;
 
-import com.fasterxml.jackson.core.ObjectCodec;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.repsy.restapi.business.abstracts.PackageMetaService;
 import com.repsy.restapi.business.abstracts.PackageService;
-import com.repsy.restapi.business.abstracts.StorageService;
-import com.repsy.restapi.config.StrategyContext;
 import com.repsy.restapi.dto.MetaDto;
+import com.repsy.storage.StorageService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,11 +24,12 @@ public class PackageServiceImp implements PackageService {
     }
 
     @Override
-    public void uploadPackage(MetaDto metaDto,MultipartFile metaFile , MultipartFile packageFile, String packageName, String version) throws IOException {
+    public void uploadPackage(MetaDto metaDto, MultipartFile metaFile, MultipartFile packageFile, String packageName, String version) throws IOException {
         // Check if metadata matches the path
         try {
             if (!metaDto.getName().equals(packageName) || !metaDto.getVersion().equals(version)) {
-                throw new IllegalArgumentException("Metadata does not match path parameters.");
+                throw new IllegalArgumentException("Metadata name or version does not match the package path parameters. " +
+                        "Package name: " + packageName + ", Version: " + version + ", Metadata name: " + metaDto.getName() + ", Version: " + metaDto.getVersion());
             }
 
             // Save metadata
@@ -42,15 +40,28 @@ public class PackageServiceImp implements PackageService {
             storageService.save(storagePath, packageFile.getInputStream());
 
             // Optionally save the metadata JSON file to storage
-            storageService.save(packageName + "/" + version + "/" + metaFile.getOriginalFilename() , packageFile.getInputStream());
-        }catch (Exception e) {
-            throw new RuntimeException(e.getMessage());
+            String metaStoragePath = packageName + "/" + version + "/" + metaFile.getOriginalFilename();
+            storageService.save(metaStoragePath, metaFile.getInputStream());
+
+        } catch (IllegalArgumentException e) {
+            // Handling invalid metadata
+            throw new IllegalArgumentException("Metadata validation failed: " + e.getMessage(), e);
+        } catch (IOException e) {
+            // Handling file-related exceptions (e.g., file write/read errors)
+            throw new IOException("Error occurred while saving the package files: " + e.getMessage(), e);
+        } catch (Exception e) {
+            // Catch any other general exception
+            throw new RuntimeException("An unexpected error occurred during package upload: " + e.getMessage(), e);
         }
     }
 
     @Override
     public InputStream downloadPackage(String packageName, String version, String fileName) throws IOException {
         String storagePath = packageName + "/" + version + "/" + fileName;
-        return storageService.load(storagePath);
+        try {
+            return storageService.load(storagePath);
+        } catch (IOException e) {
+            throw new IOException("Error occurred while downloading the package: " + e.getMessage(), e);
+        }
     }
 }
