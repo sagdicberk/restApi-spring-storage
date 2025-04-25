@@ -3,6 +3,7 @@ package com.repsy.restapi.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.repsy.restapi.business.abstracts.PackageService;
 import com.repsy.restapi.dto.MetaDto;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -12,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/")
@@ -33,11 +35,11 @@ public class PackageController {
 
         try {
 
-            if (!metaFile.getOriginalFilename().endsWith(".json")) {
+            if (!Objects.requireNonNull(metaFile.getOriginalFilename()).endsWith(".json")) {
                 return ResponseEntity.badRequest().body("Metadata file must have a .json extension.");
             }
 
-            if (!packageFile.getOriginalFilename().endsWith(".rep")) {
+            if (!Objects.requireNonNull(packageFile.getOriginalFilename()).endsWith(".rep")) {
                 return ResponseEntity.badRequest().body("Package file must have a .rep extension.");
             }
 
@@ -50,15 +52,21 @@ public class PackageController {
 
             return ResponseEntity.ok("Package uploaded successfully.");
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+            // Handle specific known exception
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("Conflict: " + e.getMessage());
+        } catch (IOException e) {
+            // Handle IO exceptions
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Error reading file: " + e.getMessage());
         } catch (Exception e) {
+            // Handle generic exceptions
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error uploading package: " + e.getMessage());
         }
     }
 
     @GetMapping(value = "/{packageName}/{version}/{fileName}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<InputStream> downloadPackage(
+    public ResponseEntity<InputStreamResource> downloadPackage(
             @PathVariable String packageName,
             @PathVariable String version,
             @PathVariable String fileName) {
@@ -75,11 +83,16 @@ public class PackageController {
             return ResponseEntity.ok()
                     .headers(headers)
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(inputStream);
+                    .body(new InputStreamResource(inputStream));
 
         } catch (IOException e) {
+            // Handle IO exceptions
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(null); // Optionally, you can return an error message as InputStream
+                    .body(null);
+        } catch (Exception e) {
+            // Handle other exceptions
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
         }
     }
 
